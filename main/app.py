@@ -5,6 +5,8 @@ from torchvision import models, transforms
 from PIL import Image
 import gradio as gr
 import json
+import numpy as np
+import matplotlib.pyplot as plt
 
 # --- CONFIGURATION ---
 MODEL_PATH = "model_best.pth"
@@ -55,54 +57,72 @@ inference_transforms = transforms.Compose([
     transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
 ])
 
-# --- PREDICTION FUNCTION ---
-def predict(image):
-    if image is None:
-        return "Please upload an image."
+# --- GRAD-CAM UTILITY ---
+def get_gradcam(model, img_tensor, target_class):
+    model.eval()
+    target_layer = model.features[-1]
+    act, grad = {}, {}
+    def fw_hook(m, i, o): act['f'] = o.detach()
+    def bw_hook(m, gi, go): grad['b'] = go[0].detach()
+    h1 = target_layer.register_forward_hook(fw_hook)
+    h2 = target_layer.register_full_backward_hook(bw_hook)
+    
+    output = model(img_tensor)
+    model.zero_grad()
+    output[0, target_class].backward()
+    h1.remove(); h2.remove()
+    
+    w = grad['b'].mean((2, 3), keepdim=True)
+    cam = torch.relu(torch.sum(w * act['f'], dim=1, keepdim=True))
+    cam = (cam - cam.min()) / (cam.max() + 1e-8)
+    return cam.cpu().numpy()[0, 0]
+
+def predict(img):
+    if img is None: return None, None
     
     # Preprocess
-    img_t = inference_transforms(image).unsqueeze(0).to(DEVICE)
+    img_t = inference_transforms(img).unsqueeze(0).to(DEVICE)
     
-    # Inference
+    # Predict
     with torch.no_grad():
         outputs = model(img_t)
-        probs = torch.softmax(outputs, dim=1)[0]
+        probs = torch.nn.functional.softmax(outputs[0], dim=0)
+        confidences = {CLASS_NAMES[i]: float(probs[i]) for i in range(len(CLASS_NAMES))}
+        top_idx = outputs.argmax(1).item()
     
-    # Format results
-    results = {CLASS_NAMES[i]: float(probs[i]) for i in range(NUM_CLASSES)}
-    return results
+    # Generate Heatmap
+    model.zero_grad()
+    cam = get_gradcam(model, img_t, top_idx)
+    
+    # Resize cam to 224x224
+    from scipy.ndimage import zoom
+    cam_resized = zoom(cam, 224/cam.shape[0])
+    cam_resized = (cam_resized - cam_resized.min()) / (cam_resized.max() + 1e-8)
+    
+    # Overlay heatmap on original image
+    img_resized = img.resize((224, 224)).convert("RGB")
+    img_np = np.array(img_resized) / 255.0
+    heatmap = plt.get_cmap('jet')(cam_resized)[:, :, :3]
+    overlay = (0.6 * img_np + 0.4 * heatmap)
+    overlay = (overlay * 255).astype(np.uint8)
+    
+    return confidences, Image.fromarray(overlay)
 
 # --- GRADIO INTERFACE ---
-with gr.Blocks() as demo:
-    gr.Markdown(
-        """
-        # 🛡️ Metal Surface Defect Classifier
-        ### AI-Powered Industrial Quality Inspection
-        Upload a photo of a metal surface to detect defects like cracks, holes, rust, or scratches.
-        """
-    )
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    gr.Markdown("# 🛡️ Industrial AI Quality Inspection")
+    gr.Markdown("Upload a photo of a metal surface to detect defects with Explainable AI heatmaps.")
     
     with gr.Row():
         with gr.Column():
             input_img = gr.Image(type="pil", label="Surface Image")
-            btn = gr.Button("Analyze Surface", variant="primary")
+            btn = gr.Button("🔍 Analyze Surface", variant="primary")
         
         with gr.Column():
-            output_label = gr.Label(num_top_classes=NUM_CLASSES, label="Detection Results")
+            output_heatmap = gr.Image(type="pil", label="AI Focus (Heatmap)")
+            output_label = gr.Label(num_top_classes=5, label="Detection Results")
             
-    gr.Examples(
-        examples=[], # Will be populated if sample images exist
-        inputs=input_img
-    )
-    
-    btn.click(fn=predict, inputs=input_img, outputs=output_label)
-    
-    gr.Markdown(
-        """
-        ---
-        *Developed for KaggleHacX Hackathon*
-        """
-    )
+    btn.click(fn=predict, inputs=input_img, outputs=[output_label, output_heatmap])
 
 if __name__ == "__main__":
     demo.launch(share=False)
