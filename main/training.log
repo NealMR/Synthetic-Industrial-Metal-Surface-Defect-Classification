@@ -1,0 +1,14 @@
+2026-04-29 11:20:36,840 [INFO] PyTorch      : 2.6.0+cu124
+2026-04-29 11:20:36,841 [INFO] Torchvision  : 0.21.0+cu124
+2026-04-29 11:20:37,002 [INFO] CUDA available: True
+2026-04-29 11:20:37,022 [INFO] GPU: NVIDIA GeForce RTX 3050 Laptop GPU
+2026-04-29 11:24:41,051 [INFO] PyTorch      : 2.6.0+cu124
+2026-04-29 11:24:41,053 [INFO] Torchvision  : 0.21.0+cu124
+2026-04-29 11:24:41,080 [INFO] CUDA available: True
+2026-04-29 11:24:41,086 [INFO] GPU: NVIDIA GeForce RTX 3050 Laptop GPU
+2026-04-29 11:27:38,924 [INFO] PyTorch      : 2.6.0+cu124
+2026-04-29 11:27:38,926 [INFO] Torchvision  : 0.21.0+cu124
+2026-04-29 11:27:38,927 [INFO] CUDA available: True
+2026-04-29 11:27:38,929 [INFO] GPU: NVIDIA GeForce RTX 3050 Laptop GPU
+2026-04-29 11:27:38,945 [INFO] Data already present or ZIP not found. Continuing...
+2026-04-29 11:27:38,975 [INFO] Directory tree under EXTRACT_DIR:
